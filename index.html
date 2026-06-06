@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#08090d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Marble">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <title>Marble</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #08090d;
+    }
+    #loading {
+      position: fixed; inset: 0;
+      background: #08090d;
+      display: flex; align-items: center; justify-content: center;
+      font-family: monospace; font-size: 13px;
+      letter-spacing: .22em; color: rgba(0,195,148,.55);
+      z-index: 100;
+    }
+    #wrap {
+      display: flex; width: 100%; overflow: hidden;
+      background: #08090d; position: relative;
+    }
+    #c { flex: 1; display: block; min-width: 0; touch-action: none; }
+
+    /* D-pad */
+    #dpad {
+      position: absolute; bottom: 22px; left: 18px;
+      display: grid;
+      grid-template-columns: 44px 44px 44px;
+      grid-template-rows: 44px 44px 44px;
+      gap: 3px;
+      user-select: none; z-index: 10;
+    }
+    .db {
+      background: rgba(0,195,148,.12);
+      border: 1px solid rgba(0,195,148,.25);
+      border-radius: 5px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; color: rgba(0,195,148,.7);
+      cursor: pointer; touch-action: none; user-select: none;
+    }
+    .db.pressed, .db:active {
+      background: rgba(0,195,148,.28); color: #00c893;
+    }
+
+    /* HUD */
+    #hud {
+      position: absolute; top: 10px; left: 14px;
+      font-family: monospace; font-size: 10px;
+      line-height: 2; pointer-events: none;
+      color: rgba(0,195,148,.38); z-index: 10;
+    }
+
+    /* Sidebar */
+    #sb {
+      width: 174px; flex-shrink: 0; overflow-y: auto;
+      padding: 10px 12px 18px;
+      background: rgba(3,5,9,0.96);
+      border-left: .5px solid rgba(0,195,148,.13);
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .sec {
+      font-family: monospace; font-size: 9px;
+      letter-spacing: .15em; text-transform: uppercase;
+      color: rgba(0,195,148,.28); padding-top: 2px;
+    }
+    .sg { display: flex; flex-direction: column; gap: 2px; }
+    .sn { font-family: monospace; font-size: 9.5px; color: rgba(0,195,148,.34); }
+    .sv { color: #00c893; font-size: 12px; }
+    .div { border-top: .5px solid rgba(0,195,148,.09); margin: 3px 0; }
+    input[type=range] { width: 100%; accent-color: #00c893; height: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="loading">INITIALISING</div>
+
+<div id="wrap">
+  <canvas id="c" touch-action="none"></canvas>
+
+  <!-- D-pad overlay -->
+  <div id="dpad">
+    <div></div>
+    <div class="db" id="dp-u" style="grid-column:2;grid-row:1">▲</div>
+    <div></div>
+    <div class="db" id="dp-l" style="grid-column:1;grid-row:2">◄</div>
+    <div style="grid-column:2;grid-row:2;background:rgba(0,195,148,.06);border-radius:4px"></div>
+    <div class="db" id="dp-r" style="grid-column:3;grid-row:2">►</div>
+    <div></div>
+    <div class="db" id="dp-d" style="grid-column:2;grid-row:3">▼</div>
+    <div></div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <span id="h-spd">spd —</span><br>
+    <span id="h-hdg">hdg —</span><br>
+    <span id="h-alt">alt —</span><br>
+    <span style="letter-spacing:.1em;font-size:9px">
+      <span id="h-kb">KB</span>&nbsp;
+      <span id="h-dp">DP</span>&nbsp;
+      <span id="h-ms">MS</span>&nbsp;
+      <span id="h-tl">TL</span>
+    </span><br>
+    <span id="btn-tilt" style="pointer-events:all;cursor:pointer;font-size:9px;
+      border:1px solid rgba(0,195,148,.35);padding:1px 6px;border-radius:3px;
+      color:rgba(0,195,148,.5)">TILT OFF</span>
+    &nbsp;
+    <span id="btn-play" style="pointer-events:all;cursor:pointer;font-size:9px;
+      border:1px solid rgba(0,195,148,.35);padding:1px 6px;border-radius:3px;
+      color:rgba(0,195,148,.5)">▶ AUDIO</span>
+    <span id="h-audio" style="font-size:9px;color:rgba(0,195,148,.3)"> —</span>
+  </div>
+
+  <!-- Sidebar (tuning — remove after final parameters decided) -->
+  <div id="sb">
+    <div class="sec">Terrain</div>
+    <div class="sg"><span class="sn">Seed <span class="sv" id="v-seed">042</span></span><input type="range" id="s-seed" min="0" max="999" step="1" value="42"></div>
+    <div class="sg"><span class="sn">Height <span class="sv" id="v-zcap">38</span></span><input type="range" id="s-zcap" min="2" max="120" step="1" value="38"></div>
+    <div class="sg"><span class="sn">l=1–2 &nbsp;<span class="sv" id="v-b1">1.00</span></span><input type="range" id="s-b1" min="0" max="3" step=".05" value="1"></div>
+    <div class="sg"><span class="sn">l=3–4 &nbsp;<span class="sv" id="v-b2">1.00</span></span><input type="range" id="s-b2" min="0" max="3" step=".05" value="1"></div>
+    <div class="sg"><span class="sn">l=5–6 &nbsp;<span class="sv" id="v-b3">1.00</span></span><input type="range" id="s-b3" min="0" max="3" step=".05" value="1"></div>
+    <div class="sg"><span class="sn">l=7–10 <span class="sv" id="v-b4">0.50</span></span><input type="range" id="s-b4" min="0" max="3" step=".05" value=".5"></div>
+    <div class="div"></div>
+    <div class="sec">Ball</div>
+    <div class="sg"><span class="sn">Base spd <span class="sv" id="v-fwd">60</span></span><input type="range" id="s-fwd" min="5" max="180" step="1" value="60"></div>
+    <div class="sg"><span class="sn">Gravity <span class="sv" id="v-grav">7</span></span><input type="range" id="s-grav" min="0" max="20" step=".5" value="7"></div>
+    <div class="sg"><span class="sn">Radius <span class="sv" id="v-ballR">5.0</span></span><input type="range" id="s-ballR" min="1" max="14" step=".5" value="5"></div>
+    <div class="sg"><span class="sn">Steer str <span class="sv" id="v-tiltStr">2.00</span></span><input type="range" id="s-tiltStr" min="0" max="4" step=".05" value="2"></div>
+    <div class="div"></div>
+    <div class="sec">Camera</div>
+    <div class="sg"><span class="sn">Follow dist <span class="sv" id="v-fDist">140</span></span><input type="range" id="s-fDist" min="40" max="300" step="2" value="140"></div>
+    <div class="sg"><span class="sn">Cam height <span class="sv" id="v-camH">90</span></span><input type="range" id="s-camH" min="20" max="240" step="1" value="90"></div>
+    <div class="sg"><span class="sn">Look-ahead <span class="sv" id="v-lAhd">100</span></span><input type="range" id="s-lAhd" min="20" max="220" step="2" value="100"></div>
+    <div class="div"></div>
+    <div class="sec">Grid</div>
+    <div class="sg"><span class="sn">Lat / Lon <span class="sv" id="v-gN">10</span></span><input type="range" id="s-gN" min="0" max="40" step="1" value="10"></div>
+    <div class="sg"><span class="sn">Width <span class="sv" id="v-gW">0.04</span></span><input type="range" id="s-gW" min=".01" max=".15" step=".01" value=".04"></div>
+  </div>
+</div>
+
+<!-- Audio element — src set by loadRealmAudio(), never autoplay -->
+<audio id="aud" preload="auto" loop></audio>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ── Engine constants ──────────────────────────────────────────────────────────
+const GRID=128, LMAX=10, PRECOMP=720;
+const PW=500, PD=600;
+const TC=Math.PI/2, PT=0.36, PP=3.4;
+const DR=5;
+const FIXED_DT=1/60; // physics tick — audio references stepCount * FIXED_DT
+
+// ── Audio engine ──────────────────────────────────────────────────────────────
+let audioCtx       = null;   // created on first gesture
+let analyserNode   = null;
+let freqData       = null;
+let audioAvailable = false;
+let audioReady     = false;  // true once AudioContext fully wired
+
+const audioEl = document.getElementById('aud');
+
+// Band scale factors — overridden per realm
+const audioScale = { bass: 0.4, mid: 0.2, high: 0.1 };
+
+// Current band values — zero when audio unavailable
+const audioBands = { bass: 0, mid: 0, high: 0 };
+
+// ── Timed event queue ──────────────────────────────────────────────────────────
+let eventQueue    = [];   // loaded from realm JSON, sorted ascending by .time
+let lastEventIdx  = 0;
+
+// ── Initialise AudioContext on first user gesture (browser policy) ─────────────
+function ensureAudioCtx() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioCtx.createMediaElementSource(audioEl);
+    analyserNode = audioCtx.createAnalyser();
+    analyserNode.fftSize = 2048;
+    freqData = new Uint8Array(analyserNode.frequencyBinCount); // 1024 bins
+    src.connect(analyserNode);
+    analyserNode.connect(audioCtx.destination);
+    audioReady = true;
+  } catch(e) {
+    audioReady = false;
+  }
+}
+
+// Resume suspended context (browser may suspend on page hide / lock screen)
+document.addEventListener('pointerdown', () => {
+  ensureAudioCtx();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}, { passive: true });
+
+// ── Load a realm audio file — silent on any failure ───────────────────────────
+async function loadRealmAudio(filepath) {
+  audioAvailable = false;
+  if (!filepath) return;
+
+  // Ensure context exists (may not yet if called before first gesture)
+  ensureAudioCtx();
+
+  try {
+    audioEl.src = filepath;
+    audioEl.load();
+    await new Promise((resolve, reject) => {
+      const onOk  = () => { audioEl.removeEventListener('error', onErr); resolve(); };
+      const onErr = () => { audioEl.removeEventListener('canplaythrough', onOk); reject(new Error('audio error')); };
+      audioEl.addEventListener('canplaythrough', onOk, { once: true });
+      audioEl.addEventListener('error',          onErr, { once: true });
+      setTimeout(() => reject(new Error('timeout')), 8000);
+    });
+    audioAvailable = true;
+  } catch(e) {
+    audioAvailable = false;   // silent — game continues
+  }
+}
+
+// ── Start playback — called after realm load + first gesture ──────────────────
+async function startRealmAudio() {
+  if (!audioAvailable) return;
+  ensureAudioCtx();
+  if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume().catch(()=>{});
+  audioEl.currentTime = 0;
+  lastEventIdx = 0;
+  try { await audioEl.play(); } catch(e) { audioAvailable = false; }
+}
+
+// Handle mid-playback interrupts (phone call, tab hide, etc.)
+audioEl.addEventListener('pause', () => {
+  // Only matters if it was playing — resume when context resumes
+});
+audioEl.addEventListener('error', () => { audioAvailable = false; });
+
+// ── Band extraction — called each render frame ────────────────────────────────
+function getAudioBands() {
+  if (!audioAvailable || !analyserNode) {
+    audioBands.bass = 0; audioBands.mid = 0; audioBands.high = 0;
+    return;
+  }
+  analyserNode.getByteFrequencyData(freqData);
+  const avg = (lo, hi) => {
+    let s = 0;
+    for (let i = lo; i < hi; i++) s += freqData[i];
+    return s / ((hi - lo) * 255);
+  };
+  // Bin ranges tuned to 48kHz / fftSize 2048 (bin width ≈ 23.4Hz)
+  audioBands.bass = avg(0,  10);   // ~0–234Hz    → SH l=1–2
+  audioBands.mid  = avg(10, 50);   // ~234Hz–1.2kHz → SH l=3–4
+  audioBands.high = avg(50, 200);  // ~1.2kHz–4.7kHz → SH l=5–6
+}
+
+// ── Terrain modulation — applied after extractWindow(), before updateVerts() ──
+// Modulates dH in-place; zero cost to precomputed buffer
+function applyAudioToTerrain() {
+  if (!audioAvailable) return;
+  const bM = 1 + audioBands.bass * audioScale.bass * 3.0;
+  const mM = 1 + audioBands.mid  * audioScale.mid  * 1.5;
+  const hM = 1 + audioBands.high * audioScale.high * 0.8;
+  for (let i = 0; i < GRID * GRID; i++) {
+    // Bass warps large-scale shape, mid adds mid-frequency swell,
+    // high adds fine shimmer. Multiplicative keeps values in [0,1].
+    dH[i] = Math.min(1, dH[i] * bM * mM * hM);
+  }
+}
+
+// ── Timed event dispatcher — checked each render frame ───────────────────────
+function checkAudioEvents() {
+  if (!eventQueue.length) return;
+  // Use audio time when available, physics clock as fallback
+  const t = audioAvailable ? audioEl.currentTime : stepCount * FIXED_DT;
+  while (lastEventIdx < eventQueue.length && eventQueue[lastEventIdx].time <= t) {
+    fireEvent(eventQueue[lastEventIdx]);
+    lastEventIdx++;
+  }
+}
+
+function fireEvent(ev) {
+  switch (ev.action) {
+    case 'terrain_shift':
+      genCoeffs(ev.seed ?? Math.round(P.seed));
+      buildKP();
+      precompute();
+      break;
+    case 'gravity_surge': {
+      const orig = P.grav;
+      P.grav *= (ev.intensity ?? 1.5);
+      setTimeout(() => { P.grav = orig; }, (ev.duration ?? 3) * 1000);
+      break;
+    }
+    case 'band_push': {
+      // Temporarily shift SH band weights, then restore
+      const saved = { b1: P.b1, b2: P.b2, b3: P.b3, b4: P.b4 };
+      if (ev.b1 != null) P.b1 = ev.b1;
+      if (ev.b2 != null) P.b2 = ev.b2;
+      if (ev.b3 != null) P.b3 = ev.b3;
+      if (ev.b4 != null) P.b4 = ev.b4;
+      precompute();
+      setTimeout(() => {
+        Object.assign(P, saved);
+        precompute();
+      }, (ev.duration ?? 4) * 1000);
+      break;
+    }
+    case 'palette_shift':
+      lerpPalette(ev.fog, ev.clear, ev.lightColor, ev.duration ?? 2);
+      break;
+    case 'ball_state':
+      setBallState(ev.state);
+      break;
+  }
+}
+
+// ── Palette lerp helper — interpolates scene colours over duration (seconds) ──
+function lerpPalette(fogHex, clearHex, lightHex, duration) {
+  const steps   = Math.round(duration * 60);
+  let   step    = 0;
+  const fogFrom = scene.fog.color.clone();
+  const fogTo   = fogHex   ? new THREE.Color(fogHex)   : fogFrom.clone();
+  const clFrom  = new THREE.Color(renderer.getClearColor());
+  const clTo    = clearHex ? new THREE.Color(clearHex) : clFrom.clone();
+  const lFrom   = dl.color.clone();
+  const lTo     = lightHex ? new THREE.Color(lightHex) : lFrom.clone();
+
+  const tick = () => {
+    if (step >= steps) return;
+    step++;
+    const t = step / steps;
+    scene.fog.color.lerpColors(fogFrom, fogTo, t);
+    renderer.setClearColor(new THREE.Color().lerpColors(clFrom, clTo, t));
+    dl.color.lerpColors(lFrom, lTo, t);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+// ── Ball state placeholder — expanded by shader layer later ──────────────────
+function setBallState(state) {
+  // Will drive uState uniform on ball ShaderMaterial
+  // For now: tint the Phong material as a stand-in
+  const colours = {
+    fire:  0xff4400, ice:   0x44aaff, storm: 0xaaaaff,
+    earth: 0x88aa44, water: 0x0088ff, void:  0x8800ff,
+    normal: 0xffffff
+  };
+  ballMat.color.set(colours[state] ?? 0xffffff);
+  ballMat.emissive.set(new THREE.Color(colours[state] ?? 0).multiplyScalar(0.12));
+}
+
+// ── applyRealm — loads a realm JSON object into P + audio ─────────────────────
+async function applyRealm(json) {
+  // Terrain
+  if (json.terrain) {
+    if (json.terrain.seed  != null) P.seed  = json.terrain.seed;
+    if (json.terrain.zcap  != null) P.zcap  = json.terrain.zcap;
+    if (json.terrain.b1    != null) P.b1    = json.terrain.b1;
+    if (json.terrain.b2    != null) P.b2    = json.terrain.b2;
+    if (json.terrain.b3    != null) P.b3    = json.terrain.b3;
+    if (json.terrain.b4    != null) P.b4    = json.terrain.b4;
+  }
+  // Ball
+  if (json.ball) {
+    if (json.ball.fwd       != null) P.fwd      = json.ball.fwd;
+    if (json.ball.grav      != null) P.grav     = json.ball.grav;
+    if (json.ball.ballR     != null) P.ballR    = json.ball.ballR;
+    if (json.ball.tiltStr   != null) P.tiltStr  = json.ball.tiltStr;
+  }
+  // Camera
+  if (json.camera) {
+    if (json.camera.fDist   != null) P.fDist    = json.camera.fDist;
+    if (json.camera.camH    != null) P.camH     = json.camera.camH;
+    if (json.camera.lAhd    != null) P.lAhd     = json.camera.lAhd;
+  }
+  // Audio scales + event queue
+  if (json.audio) {
+    if (json.audio.bassScale != null) audioScale.bass = json.audio.bassScale;
+    if (json.audio.midScale  != null) audioScale.mid  = json.audio.midScale;
+    if (json.audio.highScale != null) audioScale.high = json.audio.highScale;
+    eventQueue   = (json.audio.events ?? []).slice().sort((a,b) => a.time - b.time);
+    lastEventIdx = 0;
+    if (json.audio.file) await loadRealmAudio(json.audio.file);
+  }
+  // Palette
+  if (json.palette) {
+    if (json.palette.fog)   scene.fog.color.set(json.palette.fog);
+    if (json.palette.clear) renderer.setClearColor(json.palette.clear);
+    if (json.palette.lightColor)     dl.color.set(json.palette.lightColor);
+    if (json.palette.lightIntensity != null) dl.intensity = json.palette.lightIntensity;
+    if (json.palette.latLine) {
+      const [r,g,b] = json.palette.latLine;
+      gU.uLatColor = { value: new THREE.Vector3(r,g,b) };
+    }
+    if (json.palette.lonLine) {
+      const [r,g,b] = json.palette.lonLine;
+      gU.uLonColor = { value: new THREE.Vector3(r,g,b) };
+    }
+  }
+  // Ball starting state
+  if (json.ball?.startState) setBallState(json.ball.startState);
+
+  // Rebuild terrain with new params
+  bx=0; bz=PD*.35; vx=0; vz=0; scrollF=0; smoothHdg=0; stepCount=0;
+  camPos.set(0,100,-80);
+  genCoeffs(Math.round(P.seed));
+  buildKP();
+  precompute();
+}
+
+// ── Params ────────────────────────────────────────────────────────────────────
+const P={
+  seed:42, zcap:38, b1:1, b2:1, b3:1, b4:.5,
+  fwd:60, grav:7, ballR:5, tiltStr:2.0,
+  fDist:140, camH:90, lAhd:100,
+  gN:10, gW:.04
+};
+
+// ── Fixed timestep ────────────────────────────────────────────────────────────
+let lastTime=null, accumulator=0, stepCount=0;
+
+// ── Gravity input vector — all four sources write here ────────────────────────
+const INPUT={ix:0, iz:0};
+
+// Input source states
+const keys={};
+const dpadState={u:false, d:false, l:false, r:false};
+const mouseInput={ix:0, iz:0};
+const tiltInput={ix:0, iz:0};
+let tiltEnabled=false;
+
+// ── Ball state ────────────────────────────────────────────────────────────────
+let bx=0, bz=PD*.35, vx=0, vz=0;
+let scrollF=0;
+
+// ── Camera state ──────────────────────────────────────────────────────────────
+let smoothHdg=0;
+const camPos=new THREE.Vector3(0,100,-80);
+const camTgt=new THREE.Vector3(0,0,200);
+
+// ── Math ──────────────────────────────────────────────────────────────────────
+function mkRng(s){
+  let r=s>>>0;
+  return()=>{
+    r=(r+0x6D2B79F5)>>>0;
+    let t=Math.imul(r^(r>>>15),1|r);
+    t=(t+Math.imul(t^(t>>>7),61|t))^t;
+    return((t^(t>>>14))>>>0)/4294967296;
+  };
+}
+
+const FAC=new Array(26).fill(0);
+FAC[0]=1; for(let i=1;i<26;i++) FAC[i]=FAC[i-1]*i;
+
+function Plm(l,m,x){
+  let pmm=1;
+  if(m>0){const s=Math.sqrt(Math.max(0,(1-x)*(1+x)));let f=1;for(let i=0;i<m;i++){pmm*=-f*s;f+=2;}}
+  if(l===m) return pmm;
+  let p1=x*(2*m+1)*pmm; if(l===m+1) return p1;
+  let pll=0;
+  for(let ll=m+2;ll<=l;ll++){pll=((2*ll-1)*x*p1-(ll+m-1)*pmm)/(ll-m);pmm=p1;p1=pll;}
+  return pll;
+}
+
+// ── Spherical harmonics ───────────────────────────────────────────────────────
+let COEFFS=[], NC=0, KP=new Float32Array(0);
+
+function genCoeffs(seed){
+  const rng=mkRng(seed>>>0); COEFFS=[];
+  for(let l=1;l<=LMAX;l++)
+    for(let m=-l;m<=l;m++)
+      COEFFS.push({l, m, am:Math.abs(m), A:(rng()-.5)*50});
+  NC=COEFFS.length;
+}
+
+function bwt(l){ return l<=2?P.b1:l<=4?P.b2:l<=6?P.b3:P.b4; }
+
+function buildKP(){
+  KP=new Float32Array(NC*GRID);
+  const th=new Float32Array(GRID);
+  for(let c=0;c<GRID;c++) th[c]=TC-PT/2+(c/(GRID-1))*PT;
+  for(let ci=0;ci<NC;ci++){
+    const{l,am}=COEFFS[ci];
+    const K=Math.sqrt((2*l+1)/(4*Math.PI)*FAC[l-am]/FAC[l+am]);
+    for(let c=0;c<GRID;c++) KP[ci*GRID+c]=K*Plm(l,am,Math.cos(th[c]));
+  }
+}
+
+// ── Height buffer ─────────────────────────────────────────────────────────────
+const hBuf=new Float32Array(PRECOMP*GRID);
+const dH=new Float32Array(GRID*GRID);
+
+function precompute(){
+  const wA=new Float32Array(NC);
+  for(let ci=0;ci<NC;ci++){const{l,A}=COEFFS[ci]; wA[ci]=A*bwt(l);}
+  const cm=new Float32Array((LMAX+1)*PRECOMP), sm=new Float32Array((LMAX+1)*PRECOMP);
+  const dp=PP/(PRECOMP-1);
+  for(let row=0;row<PRECOMP;row++){
+    const phi=row*dp;
+    for(let m=0;m<=LMAX;m++){cm[m*PRECOMP+row]=Math.cos(m*phi);sm[m*PRECOMP+row]=Math.sin(m*phi);}
+  }
+  hBuf.fill(0);
+  for(let ci=0;ci<NC;ci++){
+    const{m,am}=COEFFS[ci]; const w=wA[ci]; const kb=ci*GRID;
+    for(let row=0;row<PRECOMP;row++){
+      const rf=m===0?w:m>0?w*Math.SQRT2*cm[am*PRECOMP+row]:w*Math.SQRT2*sm[am*PRECOMP+row];
+      const rb=row*GRID;
+      for(let c=0;c<GRID;c++) hBuf[rb+c]+=rf*KP[kb+c];
+    }
+  }
+  let lo=Infinity, hi=-Infinity;
+  for(let i=0;i<hBuf.length;i++){if(hBuf[i]<lo)lo=hBuf[i];if(hBuf[i]>hi)hi=hBuf[i];}
+  const inv=1/((hi-lo)||1);
+  for(let i=0;i<hBuf.length;i++) hBuf[i]=(hBuf[i]-lo)*inv;
+}
+
+function extractWindow(){
+  const rf=((scrollF%PRECOMP)+PRECOMP)%PRECOMP;
+  const r0=Math.floor(rf), t=rf-r0;
+  for(let r=0;r<GRID;r++){
+    const sr0=(r0+r)%PRECOMP, sr1=(r0+r+1)%PRECOMP;
+    const base=r*GRID, b0=sr0*GRID, b1r=sr1*GRID;
+    for(let c=0;c<GRID;c++) dH[base+c]=hBuf[b0+c]*(1-t)+hBuf[b1r+c]*t;
+  }
+}
+
+function sampleAt(wx,wz){
+  const u=Math.max(.001,Math.min(.999,wx/PW+.5));
+  const v=Math.max(.001,Math.min(.999,wz/PD));
+  const cf=u*(GRID-1), c0=Math.min(GRID-2,Math.floor(cf)), ct=cf-c0;
+  const rf=v*(GRID-1), r0=Math.min(GRID-2,Math.floor(rf)), rt=rf-r0;
+  return(dH[r0*GRID+c0]*(1-ct)*(1-rt)+dH[r0*GRID+c0+1]*ct*(1-rt)+
+         dH[(r0+1)*GRID+c0]*(1-ct)*rt+dH[(r0+1)*GRID+c0+1]*ct*rt)*P.zcap;
+}
+
+// ── Three.js ──────────────────────────────────────────────────────────────────
+const wrap=document.getElementById('wrap');
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x08090d);
+
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x08090d,.0016);
+const camera=new THREE.PerspectiveCamera(65,1,.5,2500);
+
+scene.add(new THREE.AmbientLight(0x1a2e28,1.3));
+const dl=new THREE.DirectionalLight(0xffffff,1.1);
+dl.position.set(200,320,100); scene.add(dl);
+
+// Terrain geometry
+const posArr=new Float32Array(GRID*GRID*3);
+const uvArr=new Float32Array(GRID*GRID*2);
+for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++){
+  const i=r*GRID+c;
+  posArr[i*3]=(c/(GRID-1)-.5)*PW; posArr[i*3+1]=0; posArr[i*3+2]=(r/(GRID-1))*PD;
+  uvArr[i*2]=c/(GRID-1); uvArr[i*2+1]=r/(GRID-1);
+}
+const idxArr=[];
+for(let r=0;r<GRID-1;r++) for(let c=0;c<GRID-1;c++){
+  const a=r*GRID+c; idxArr.push(a,a+GRID,a+1,a+1,a+GRID,a+GRID+1);
+}
+const geo=new THREE.BufferGeometry();
+const posAttr=new THREE.BufferAttribute(posArr,3); posAttr.setUsage(THREE.DynamicDrawUsage);
+geo.setAttribute('position',posAttr);
+geo.setAttribute('uv',new THREE.BufferAttribute(uvArr,2));
+geo.setIndex(idxArr);
+
+const gU={uZcap:{value:P.zcap}, uGN:{value:P.gN}, uGW:{value:P.gW}};
+const VS=`varying float vH;varying vec2 vUv;
+void main(){vH=position.y;vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
+const FS=`uniform float uZcap,uGN,uGW;varying float vH;varying vec2 vUv;
+void main(){
+  float n=uZcap>0.?vH/uZcap:0.;
+  vec3 col=vec3(n*.03,0.07+n*.64,n*.50);
+  float lat=step(1.-uGW,fract(vUv.y*uGN));
+  float lon=step(1.-uGW,fract(vUv.x*uGN));
+  col=mix(col,vec3(0.,.82,.92),lat*.78);
+  col=mix(col,vec3(.95,.52,.04),lon*.78);
+  gl_FragColor=vec4(col,1.);
+}`;
+scene.add(new THREE.Mesh(geo,new THREE.ShaderMaterial({uniforms:gU,vertexShader:VS,fragmentShader:FS,side:THREE.DoubleSide})));
+
+// Ball
+const ballMat=new THREE.MeshPhongMaterial({color:0xffffff,emissive:0x060e08,shininess:160,specular:0xcccccc});
+const ball=new THREE.Mesh(new THREE.SphereGeometry(DR,28,18),ballMat);
+scene.add(ball);
+
+// Shadow disc
+const shd=new THREE.Mesh(
+  new THREE.CircleGeometry(1,20),
+  new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.28,depthWrite:false})
+);
+shd.rotation.x=-Math.PI/2; scene.add(shd);
+
+function updateVerts(){
+  for(let i=0;i<GRID*GRID;i++) posArr[i*3+1]=dH[i]*P.zcap;
+  posAttr.needsUpdate=true;
+  gU.uZcap.value=P.zcap; gU.uGN.value=P.gN; gU.uGW.value=P.gW;
+}
+
+// ── Input handlers ────────────────────────────────────────────────────────────
+
+// Keyboard
+window.addEventListener('keydown', e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+  keys[e.code]=true;
+});
+window.addEventListener('keyup', e=>{ keys[e.code]=false; });
+
+// Mouse — position relative to canvas centre
+canvas.addEventListener('mousemove', e=>{
+  const r=canvas.getBoundingClientRect();
+  const nx=(e.clientX-r.left)/r.width*2-1;
+  const ny=(e.clientY-r.top)/r.height*2-1;
+  const D=.12, S=1.4;
+  mouseInput.ix=Math.abs(nx)>D?Math.max(-1,Math.min(1,(nx-Math.sign(nx)*D)*S)):0;
+  mouseInput.iz=Math.abs(ny)>D?Math.max(-1,Math.min(1,(ny-Math.sign(ny)*D)*S)):0;
+});
+canvas.addEventListener('mouseleave', ()=>{ mouseInput.ix=0; mouseInput.iz=0; });
+
+// D-pad
+['dp-u','dp-d','dp-l','dp-r'].forEach(id=>{
+  const key=id.split('-')[1];
+  const el=document.getElementById(id);
+  el.addEventListener('pointerdown', e=>{ e.preventDefault(); dpadState[key]=true; el.classList.add('pressed'); }, {passive:false});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>
+    el.addEventListener(ev, ()=>{ dpadState[key]=false; el.classList.remove('pressed'); })
+  );
+});
+
+// Tilt — smooth raw sensor values to absorb noise and 30Hz jitter
+const TILT_SMOOTH=0.25;
+function handleOrientation(e){
+  if(!tiltEnabled||e.gamma===null) return;
+  const RANGE=22, NEUTRAL=42;
+  const rawIx=Math.max(-1,Math.min(1,e.gamma/RANGE));
+  const rawIz=Math.max(-1,Math.min(1,(NEUTRAL-e.beta)/RANGE));
+  tiltInput.ix+=(rawIx-tiltInput.ix)*TILT_SMOOTH;
+  tiltInput.iz+=(rawIz-tiltInput.iz)*TILT_SMOOTH;
+}
+window.addEventListener('deviceorientation', handleOrientation);
+
+document.getElementById('btn-tilt').addEventListener('click', async()=>{
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+    try{ const p=await DeviceOrientationEvent.requestPermission(); tiltEnabled=(p==='granted'); }
+    catch(e){ tiltEnabled=false; }
+  } else { tiltEnabled=true; }
+  const btn=document.getElementById('btn-tilt');
+  btn.textContent=tiltEnabled?'TILT ON':'TILT OFF';
+  btn.style.color=tiltEnabled?'#00c893':'rgba(0,195,148,.5)';
+  btn.style.borderColor=tiltEnabled?'#00c893':'rgba(0,195,148,.35)';
+});
+
+// ── Audio play button ─────────────────────────────────────────────────────────
+document.getElementById('btn-play').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-play');
+  const ind = document.getElementById('h-audio');
+  btn.textContent = '… AUDIO';
+  await startRealmAudio();
+  if (audioAvailable) {
+    btn.textContent = '■ AUDIO';
+    btn.style.color = '#00c893';
+    btn.style.borderColor = '#00c893';
+    ind.textContent = ' ♪';
+    ind.style.color = '#00c893';
+  } else {
+    btn.textContent = '✕ AUDIO';
+    btn.style.color = 'rgba(195,80,80,.7)';
+    ind.textContent = ' —';
+  }
+});
+
+// Update audio band display in HUD each frame
+function updateAudioHUD() {
+  if (!audioAvailable) return;
+  const b = (audioBands.bass * 100).toFixed(0).padStart(2,' ');
+  const m = (audioBands.mid  * 100).toFixed(0).padStart(2,' ');
+  const h = (audioBands.high * 100).toFixed(0).padStart(2,' ');
+  document.getElementById('h-audio').textContent = ` ♪ B${b} M${m} H${h}`;
+}
+
+// ── readInputs — aggregates all four sources into INPUT each physics tick ─────
+function readInputs(){
+  let ix=0, iz=0;
+  ix+=(keys.ArrowRight||keys.KeyD?1:0)-(keys.ArrowLeft||keys.KeyA?1:0);
+  iz+=(keys.ArrowDown||keys.KeyS?.6:0)-(keys.ArrowUp||keys.KeyW?.6:0);
+  ix+=(dpadState.r?1:0)-(dpadState.l?1:0);
+  iz+=(dpadState.d?.6:0)-(dpadState.u?.6:0);
+  ix+=mouseInput.ix; iz+=mouseInput.iz;
+  if(tiltEnabled){ ix+=tiltInput.ix; iz+=tiltInput.iz; }
+  INPUT.ix=Math.max(-1,Math.min(1,ix));
+  INPUT.iz=Math.max(-1,Math.min(1,iz));
+}
+
+// ── Physics step — runs at exactly FIXED_DT ───────────────────────────────────
+function physicsStep(){
+  extractWindow(); // terrain consistent with this tick
+  const D=PW/GRID*1.8;
+  const gx=(sampleAt(bx+D,bz)-sampleAt(bx-D,bz))/(2*D);
+  const gz=(sampleAt(bx,bz+D)-sampleAt(bx,bz-D))/(2*D);
+  const tF=P.grav*P.tiltStr;
+  const dmp=Math.pow(.998,FIXED_DT*60);
+  vx=(vx+(-P.grav*gx+INPUT.ix*tF)*FIXED_DT)*dmp;
+  vz=(vz+(-P.grav*gz+INPUT.iz*tF+P.fwd*.18)*FIXED_DT)*dmp;
+  const maxV=P.fwd*2.4, spd=Math.sqrt(vx*vx+vz*vz);
+  if(spd>maxV){ vx*=maxV/spd; vz*=maxV/spd; }
+  bx=Math.max(-PW*.46,Math.min(PW*.46,bx+vx*FIXED_DT));
+  bz=Math.max(PD*.15,Math.min(PD*.82,bz+vz*FIXED_DT));
+  scrollF+=Math.max(0,vz)*(PRECOMP/PD)*FIXED_DT;
+  stepCount++;
+  // Audio / event hook: stepCount * FIXED_DT = exact elapsed physics time
+}
+
+// ── Camera — fixed lag constants, three tunable position variables ─────────────
+function stepCamera(rdt, spd){
+  const pL=Math.min(1,.08*60*rdt), hL=Math.min(1,.04*60*rdt), dL=Math.min(1,.06*60*rdt);
+  if(spd>2){
+    const tgt=Math.atan2(vx,vz); let dh=tgt-smoothHdg;
+    while(dh>Math.PI)dh-=Math.PI*2; while(dh<-Math.PI)dh+=Math.PI*2;
+    smoothHdg+=dh*dL;
+  }
+  const sh=smoothHdg;
+  camPos.x+=(bx-Math.sin(sh)*P.fDist-camPos.x)*pL;
+  camPos.z+=(bz-Math.cos(sh)*P.fDist-camPos.z)*pL;
+  const cth=sampleAt(camPos.x,Math.max(10,Math.min(PD-10,camPos.z)));
+  camPos.y=Math.max(cth+18, camPos.y+(cth+P.camH-camPos.y)*hL);
+  const la=P.lAhd+spd*.9;
+  const lx=bx+Math.sin(sh)*la, lz=Math.min(PD*.94,bz+Math.cos(sh)*la);
+  const lth=sampleAt(lx,lz);
+  camTgt.x+=(lx-camTgt.x)*pL;
+  camTgt.y+=(lth+P.ballR*.8-camTgt.y)*hL;
+  camTgt.z+=(lz-camTgt.z)*pL;
+  camera.position.copy(camPos); camera.lookAt(camTgt);
+}
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
+function updateHUD(spd, h){
+  document.getElementById('h-spd').textContent=`spd ${spd.toFixed(1)}`;
+  document.getElementById('h-hdg').textContent=`hdg ${(smoothHdg*180/Math.PI).toFixed(0)}°`;
+  document.getElementById('h-alt').textContent=`alt ${(camPos.y-h).toFixed(0)}`;
+  const kbA=keys.ArrowLeft||keys.ArrowRight||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD||keys.KeyW||keys.KeyS;
+  const dpA=dpadState.u||dpadState.d||dpadState.l||dpadState.r;
+  const msA=Math.abs(mouseInput.ix)+Math.abs(mouseInput.iz)>.05;
+  const tlA=tiltEnabled&&(Math.abs(tiltInput.ix)+Math.abs(tiltInput.iz)>.05);
+  const c=a=>a?'#00c893':'rgba(0,195,148,.22)';
+  document.getElementById('h-kb').style.color=c(kbA);
+  document.getElementById('h-dp').style.color=c(dpA);
+  document.getElementById('h-ms').style.color=c(msA);
+  document.getElementById('h-tl').style.color=c(tlA);
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+function resize(){
+  const H=window.innerHeight;
+  wrap.style.height=H+'px';
+  const sbW=document.getElementById('sb').offsetWidth||174;
+  const cW=Math.max(window.innerWidth-sbW,200);
+  renderer.setSize(cW,H,false);
+  camera.aspect=cW/H;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>setTimeout(resize,150));
+
+// ── Slider bindings ───────────────────────────────────────────────────────────
+function bind(id,key,fmt,cb){
+  const sl=document.getElementById('s-'+id), vl=document.getElementById('v-'+id);
+  vl.textContent=fmt(P[key]);
+  sl.addEventListener('input',()=>{ P[key]=parseFloat(sl.value); vl.textContent=fmt(P[key]); if(cb) cb(); });
+}
+const rFull=()=>{
+  bx=0; bz=PD*.35; vx=0; vz=0; scrollF=0; smoothHdg=0; stepCount=0;
+  camPos.set(0,100,-80);
+  genCoeffs(Math.round(P.seed)); buildKP(); precompute();
+};
+const rBand=()=>precompute();
+
+bind('seed','seed', v=>String(Math.round(v)).padStart(3,'0'), rFull);
+bind('zcap','zcap', v=>Math.round(v), null);
+bind('b1','b1', v=>v.toFixed(2), rBand);
+bind('b2','b2', v=>v.toFixed(2), rBand);
+bind('b3','b3', v=>v.toFixed(2), rBand);
+bind('b4','b4', v=>v.toFixed(2), rBand);
+bind('fwd','fwd', v=>Math.round(v), null);
+bind('grav','grav', v=>v.toFixed(1), null);
+bind('ballR','ballR', v=>v.toFixed(1), null);
+bind('tiltStr','tiltStr', v=>v.toFixed(2), null);
+bind('fDist','fDist', v=>Math.round(v), null);
+bind('camH','camH', v=>Math.round(v), null);
+bind('lAhd','lAhd', v=>Math.round(v), null);
+bind('gN','gN', v=>Math.round(v), null);
+bind('gW','gW', v=>v.toFixed(2), null);
+
+// ── Pause when hidden (saves battery) ────────────────────────────────────────
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) lastTime=null; });
+
+// ── Realm 1 — Fire (test definition, will move to realm_1.json) ───────────────
+const REALM_1 = {
+  id: 'realm_fire',
+  terrain: { seed: 287, zcap: 45, b1: 0.8, b2: 1.4, b3: 1.2, b4: 0.6 },
+  ball:    { fwd: 65, grav: 7, ballR: 5, tiltStr: 2.0, startState: 'normal' },
+  camera:  { fDist: 135, camH: 85, lAhd: 105 },
+  audio: {
+    file: 'realm_1.ogg',
+    bassScale: 0.4, midScale: 0.2, highScale: 0.1,
+    events: [
+      // Uncomment to test events once audio timing is confirmed
+      // { time: 10.0, action: 'gravity_surge', intensity: 1.4, duration: 3 },
+      // { time: 20.0, action: 'terrain_shift', seed: 312 }
+    ]
+  },
+  palette: {
+    fog: '#0d0500', clear: '#08090d',
+    lightColor: '#ff4400', lightIntensity: 1.2
+  }
+};
+
+// ── Initialise ────────────────────────────────────────────────────────────────
+// applyRealm is async (audio load) but terrain/physics init is sync —
+// call both so the game starts immediately; audio loads in background.
+genCoeffs(42); buildKP(); precompute();
+applyRealm(REALM_1); // async, audio loads in background — game starts without waiting
+
+// ── Main loop — fixed timestep accumulator ────────────────────────────────────
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(lastTime===null){ lastTime=ts; return; }
+  const rdt=Math.min((ts-lastTime)/1000, .1); // cap prevents spiral of death
+  lastTime=ts;
+  accumulator+=rdt;
+  while(accumulator>=FIXED_DT){
+    readInputs();
+    physicsStep();
+    accumulator-=FIXED_DT;
+  }
+  // Render pass
+  extractWindow();
+  getAudioBands();
+  applyAudioToTerrain();
+  checkAudioEvents();
+  updateVerts();
+  const h=sampleAt(bx,bz);
+  const spd=Math.sqrt(vx*vx+vz*vz);
+  ball.scale.setScalar(P.ballR/DR);
+  ball.position.set(bx,h+P.ballR,bz);
+  shd.position.set(bx,h+.15,bz); shd.scale.setScalar(P.ballR*1.4/DR);
+  if(spd>.1){
+    const ax=new THREE.Vector3(vz,0,-vx).normalize();
+    ball.rotateOnWorldAxis(ax, spd/P.ballR*rdt*.75);
+  }
+  stepCamera(rdt, spd);
+  updateHUD(spd, h);
+  updateAudioHUD();
+  renderer.render(scene,camera);
+}
+
+// Start — hide loading screen then run
+requestAnimationFrame(()=>{
+  document.getElementById('loading').style.display='none';
+  resize();
+  loop(performance.now());
+});
+
+// ── Service worker registration ───────────────────────────────────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js')
+      .catch(err=>console.warn('SW:', err));
+  });
+}
+</script>
+</body>
+</html>
