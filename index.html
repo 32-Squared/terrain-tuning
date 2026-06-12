@@ -634,7 +634,6 @@ scene.add(ballLight);
 // ── Trail — ring buffer 80 positions ─────────────────────────────────────────
 const TRAIL_LEN=80;
 const trailPos=new Float32Array(TRAIL_LEN*3);
-const trailAlpha=new Float32Array(TRAIL_LEN);
 let trailHead=0;
 const trailGeo=new THREE.BufferGeometry();
 const tPosAttr=new THREE.BufferAttribute(new Float32Array(TRAIL_LEN*3),3);
@@ -734,7 +733,6 @@ function readInputs(){
 
 // ── Physics ───────────────────────────────────────────────────────────────────
 function physicsStep(){
-  extractWindow();
   const D=PW/GRID*1.8;
   const gx=(sampleAt(bx+D,bz)-sampleAt(bx-D,bz))/(2*D);
   const gz=(sampleAt(bx,bz+D)-sampleAt(bx,bz-D))/(2*D);
